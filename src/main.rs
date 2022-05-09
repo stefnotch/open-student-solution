@@ -1,16 +1,25 @@
 use fs_extra::copy_items;
+use std::fmt;
 use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
 };
-use walkdir::WalkDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Overengineered Student Solution Opener v1.0");
+    println!("Please place this in the algodat-2022s-tutorinnen/ag1 folder");
+
+    if cfg!(debug_assertions) {
+        println!("Warning: Running in dev mode");
+    }
 
     // TODO: Check if directory is correct. Otherwise we do a little file browser hehe
-    let algodat_dir = Path::new("../algodat-2022s-tutorinnen/ag1");
+    let algodat_dir = if cfg!(debug_assertions) {
+        Path::new("../algodat-2022s-tutorinnen/ag1")
+    } else {
+        Path::new(".")
+    };
 
     for entry in fs::read_dir(algodat_dir)? {
         let dir = entry?;
@@ -19,29 +28,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().collect();
     let mut mat_nr = if args.len() > 1 {
-        &(args[1])
+        args[1].to_owned()
     } else {
-        "11740473"
+        "".to_owned()
     };
-    if !is_mat_nr(mat_nr) {
-        //mat_nr = "x";
-        println!("Please pass a valid matriculation number as the first argument");
-        return Ok(());
+    while !is_mat_nr(&mat_nr) {
+        mat_nr = match inquire::Text::new("Matriculation number?")
+            //.with_suggester(|v| TODO: Autocomplete the matnr like https://github.com/mikaelmello/inquire/blob/main/examples/autocomplete_path.rs )
+            // TODO: Fuzzy search (matnr and name)
+            .prompt()
+        {
+            Ok(user_mat_nr) => user_mat_nr,
+            Err(_) => {
+                println!("An error happened when asking for the mat.nr., try again later.");
+                return Ok(());
+            }
+        }
     }
-    // TODO: Check for known matnr and ask user for one if it's not known
 
     // Don't use temp dir, since it's majorly cursed on Windows
-    let output_solutions_dir = algodat_dir.join("opened-solution");
-    fs::create_dir_all(&output_solutions_dir)?;
+    let output_container_dir = algodat_dir.join("opened-solution");
+    fs::create_dir_all(&output_container_dir)?;
 
-    let output_dir = output_solutions_dir.join("ad-".to_owned() + mat_nr);
+    let output_dir = output_container_dir.join("ad-".to_owned() + &mat_nr);
     if output_dir.exists() && !output_dir.read_dir()?.next().is_none() {
         println!("The {:?} directory already exists", &output_dir);
-        return Ok(());
-        // TODO: Handle this case
-    } else {
-        fs::create_dir_all(&output_dir)?;
+        let options = vec![FileExistsOptions::Overwrite, FileExistsOptions::Cancel];
+        match inquire::Select::new("What do you want to do?", options).prompt() {
+            Ok(option) => match option {
+                FileExistsOptions::Overwrite => {
+                    fs::remove_dir_all(&output_dir)?;
+                }
+                FileExistsOptions::Cancel => {
+                    println!("Cancelled...quitting program");
+                    return Ok(());
+                }
+            },
+            Err(_) => {
+                println!(
+                    "An error happened while dealing with the existing directory, try again later."
+                );
+                return Ok(());
+            }
+        }
     }
+
+    fs::create_dir_all(&output_dir)?;
 
     // No chmod 0700, since we're on Windows and stuff
 
@@ -63,7 +95,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Copy the abgabe PDF
-    if let Some(student_pdf_file) = find_student_file(algodat_dir.join("abgaben/Berichte"), mat_nr)?
+    if let Some(student_pdf_file) =
+        find_student_file(algodat_dir.join("abgaben/Berichte"), &mat_nr)?
     {
         fs::copy(
             &student_pdf_file,
@@ -77,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Couldn't find the abgabe PDF for {:?}", mat_nr);
     }
 
-    // TODO: Copy the abgabe files (P1, P2, P3)
+    // Copy the abgabe files (P1, P2, P3)
     {
         for entry in fs::read_dir(algodat_dir.join("abgaben"))? {
             let dir = entry?;
@@ -85,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 continue;
             }
 
-            if let Some(student_code_file) = find_student_file(dir.path(), mat_nr)? {
+            if let Some(student_code_file) = find_student_file(dir.path(), &mat_nr)? {
                 println!(
                     "Found code {:?} {:?}",
                     dir.file_name(),
@@ -127,6 +160,22 @@ where
     }
 
     return Ok(None);
+}
+
+enum FileExistsOptions {
+    Overwrite,
+    // TODO: Add a retry option
+    // TODO: Add a "Don't delete (rename)" option
+    Cancel,
+}
+
+impl fmt::Display for FileExistsOptions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FileExistsOptions::Overwrite => write!(f, "Overwrite"),
+            FileExistsOptions::Cancel => write!(f, "Cancel"),
+        }
+    }
 }
 
 struct Student {
