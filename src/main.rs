@@ -1,10 +1,14 @@
+use arboard::Clipboard;
 use fs_extra::copy_items;
+use std::collections::HashSet;
 use std::fmt;
 use std::{
     fs::{self, File},
+    hash::{Hash, Hasher},
     io::Write,
     path::{Path, PathBuf},
 };
+use walkdir::WalkDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Overengineered Student Solution Opener v1.0");
@@ -21,10 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Path::new(".")
     };
 
-    for entry in fs::read_dir(algodat_dir)? {
-        let dir = entry?;
-        println!("{:?}", dir.path());
-    }
+    let algodat_abgaben_dir = algodat_dir.join("abgaben");
+
+    let students = get_known_students(algodat_dir);
 
     let args: Vec<String> = std::env::args().collect();
     let mut mat_nr = if args.len() > 1 {
@@ -32,13 +35,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         "".to_owned()
     };
+
+    // Get the matriculation number from the clipboard, if possible
+    if !is_mat_nr(&mat_nr) {
+        match Clipboard::new().and_then(|mut clipboard| clipboard.get_text()) {
+            Ok(clipboard_text) => {
+                if is_mat_nr(&clipboard_text) {
+                    let message = format!("Select student: {}", clipboard_text);
+                    match inquire::Select::new(&message, vec![OkCancel::Ok, OkCancel::Cancel])
+                        .prompt_skippable()
+                    {
+                        Ok(Some(OkCancel::Ok)) => {
+                            mat_nr = clipboard_text;
+                        }
+                        _ => (),
+                    };
+                }
+            }
+            Err(_) => {}
+        };
+    }
+
+    // Ask for a matriculation number
+    let suggester = student_suggester(&students);
     while !is_mat_nr(&mat_nr) {
         mat_nr = match inquire::Text::new("Matriculation number?")
-            //.with_suggester(|v| TODO: Autocomplete the matnr like https://github.com/mikaelmello/inquire/blob/main/examples/autocomplete_path.rs )
-            // TODO: Fuzzy search (matnr and name)
+            .with_suggester(suggester.as_ref())
             .prompt()
         {
-            Ok(user_mat_nr) => user_mat_nr,
+            Ok(user_mat_nr) => user_mat_nr.trim().chars().take(8).collect(), // TODO: This is a biiit of a hack
             Err(_) => {
                 println!("An error happened when asking for the mat.nr., try again later.");
                 return Ok(());
@@ -82,21 +107,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     gitignore_file.write_all(b"/*")?; // Basically gitignore this entire folder
 
     // Copy the Frameworks
-    let mut framework_files = Vec::new();
+    let framework_dirs = get_framework_dirs(algodat_dir)?;
+    let framework_files: Vec<_> = framework_dirs.iter().map(fs::DirEntry::file_name).collect();
     {
         let options = fs_extra::dir::CopyOptions::new();
-        let mut from_paths = Vec::new();
-        for entry in fs::read_dir(algodat_dir.join("frameworks"))? {
-            let dir = entry?;
-            from_paths.push(dir.path());
-            framework_files.push(dir.file_name())
-        }
+        let from_paths: Vec<_> = framework_dirs.iter().map(fs::DirEntry::path).collect();
         copy_items(&from_paths, &output_dir, &options)?;
     }
 
     // Copy the abgabe PDF
     if let Some(student_pdf_file) =
-        find_student_file(algodat_dir.join("abgaben/Berichte"), &mat_nr)?
+        find_student_file(algodat_abgaben_dir.join("Berichte"), &mat_nr)?
     {
         fs::copy(
             &student_pdf_file,
@@ -112,36 +133,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Copy the abgabe files (P1, P2, P3)
     {
-        for entry in fs::read_dir(algodat_dir.join("abgaben"))? {
-            let dir = entry?;
-            if !framework_files.contains(&dir.file_name()) {
+        for entry in fs::read_dir(algodat_abgaben_dir)? {
+            let source_dir = entry?;
+            if !framework_files.contains(&source_dir.file_name()) {
                 continue;
             }
+            let result_dir = output_dir.join(source_dir.file_name());
 
-            if let Some(student_code_file) = find_student_file(dir.path(), &mat_nr)? {
+            if let Some(student_code_file) = find_student_file(source_dir.path(), &mat_nr)? {
                 println!(
                     "Found code {:?} {:?}",
-                    dir.file_name(),
+                    source_dir.file_name(),
                     student_code_file.file_name()
                 );
                 fs::copy(
                     &student_code_file,
-                    output_dir
-                        .join(dir.file_name())
-                        .join("src/main/java/exercise/StudentSolutionImplementation.java"),
+                    result_dir.join("src/main/java/exercise/StudentSolutionImplementation.java"),
                 )?;
+
+                let mut named_student_code_file = source_dir.file_name();
+                named_student_code_file.push("-StudentSolutionImplementation.java");
+                fs::copy(&student_code_file, output_dir.join(named_student_code_file))?;
             } else {
                 println!(
                     "Couldn't find the code file for {:?} {:?}",
-                    dir.file_name(),
+                    source_dir.file_name(),
                     mat_nr
                 );
+                let mut empty_solution_name = source_dir.file_name();
+                empty_solution_name.push("-empty");
+                fs::rename(&result_dir, result_dir.with_file_name(empty_solution_name))?;
             }
         }
     }
+
+    open::that(&output_dir)?;
     // TODO: Show "open PDF" and "open P1/P2/P3" buttons
     // TODO: Protip, use https://plugins.jetbrains.com/plugin/14494-pdf-viewer and then you only have to share your screen
     // TODO: Open PDF with default program (or browser) and P1/P2/P3 with explorer
+    // TODO: https://tuwel.tuwien.ac.at/mod/assign/view.php?action=grading&id=1456555&tifirst=A&tilast=A
+    // TODO: Ask "open with Intellij/default program"
 
     // TODO: intellij (uh oh) with https://github.com/oliverschwendener/ueli/blob/dev/src/main/executors/application-searcher.ts or https://github.com/microsoft/windows-rs with https://stackoverflow.com/questions/908850/get-installed-applications-in-a-system
 
@@ -160,6 +191,29 @@ where
     }
 
     return Ok(None);
+}
+
+fn get_framework_dirs(algodat_dir: &Path) -> std::io::Result<Vec<fs::DirEntry>> {
+    let mut framework_dirs = Vec::new();
+    for entry in fs::read_dir(algodat_dir.join("frameworks"))? {
+        let dir = entry?;
+        framework_dirs.push(dir);
+    }
+    return Ok(framework_dirs);
+}
+
+enum OkCancel {
+    Ok,
+    Cancel,
+}
+
+impl fmt::Display for OkCancel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OkCancel::Ok => write!(f, "Ok"),
+            OkCancel::Cancel => write!(f, "Cancel"),
+        }
+    }
 }
 
 enum FileExistsOptions {
@@ -183,15 +237,56 @@ struct Student {
     first_name: String,
     last_name: String,
 }
+impl PartialEq for Student {
+    fn eq(&self, other: &Self) -> bool {
+        self.mat_nr == other.mat_nr
+    }
+}
 
-/*
-fn get_known_students() -> Vec<Student> {
-    WalkDir::new(algodat_dir.join("abgaben"))
+impl Eq for Student {}
+
+impl Hash for Student {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.mat_nr.hash(state)
+    }
+}
+
+fn student_suggester<'a>(
+    students: &'a Vec<Student>,
+) -> Box<dyn for<'r> Fn(&'r str) -> Vec<String> + 'a> {
+    Box::new(|user_input| {
+        students
+            .iter()
+            .filter(|student| {
+                student.mat_nr.starts_with(user_input)
+                    || student.first_name.contains(user_input)
+                    || student.last_name.contains(user_input)
+                // TODO: firstname lastname search or fuzzy search
+            })
+            .map(|student| {
+                format!(
+                    "{} - {} {}",
+                    student.mat_nr, student.first_name, student.last_name
+                )
+            })
+            .collect()
+    })
+}
+
+fn get_known_students<P>(algodat_abgaben_dir: P) -> Vec<Student>
+where
+    P: AsRef<Path>,
+{
+    let all_students: Vec<_> = WalkDir::new(algodat_abgaben_dir)
         .into_iter()
         .filter_entry(|e| !is_hidden(e))
         .filter_map(|v| v.ok())
-        .filter(|e| e.file_type().is_file() && e.file_name().to_string_lossy().contains(mat_nr))
-}*/
+        .filter_map(|e| parse_student_file(e.path()))
+        .collect();
+
+    let students_set: HashSet<Student> = HashSet::from_iter(all_students);
+    students_set.into_iter().collect()
+}
 
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
     entry
@@ -199,6 +294,22 @@ fn is_hidden(entry: &walkdir::DirEntry) -> bool {
         .to_str()
         .map(|v| v.starts_with("."))
         .unwrap_or(false)
+}
+
+fn parse_student_file(path: &Path) -> Option<Student> {
+    path.file_stem().and_then(|file_name| {
+        let file_name = file_name.to_string_lossy();
+        let parts: Vec<&str> = file_name.split("-").collect();
+        if parts.len() != 3 {
+            return None;
+        } else {
+            return Some(Student {
+                mat_nr: parts[2].to_string(),
+                first_name: parts[1].to_string(),
+                last_name: parts[0].to_string(),
+            });
+        }
+    })
 }
 
 fn is_mat_nr(s: &str) -> bool {
