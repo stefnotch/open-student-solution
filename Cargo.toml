@@ -7,9 +7,11 @@ edition = "2021"
 
 [dependencies]
 tui = "0.18.0"
-crossterm = "0.23.2"
+crossterm = "0.24.0"
 walkdir = "2.3.2"
 fs_extra = "1.2.0"
 inquire = "0.2.1"
-open = "2.1.2"
+open = "3.0.1"
 arboard = "2.1.0"
+confy = "0.4.0"
+serde = { version = "1.0", features = ["derive"] } 

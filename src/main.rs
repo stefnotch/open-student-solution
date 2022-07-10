@@ -1,5 +1,6 @@
 use arboard::Clipboard;
 use fs_extra::copy_items;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 use std::{
@@ -18,16 +19,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Warning: Running in dev mode");
     }
 
-    // TODO: Check if directory is correct. Otherwise we do a little file browser hehe
-    let algodat_dir = if cfg!(debug_assertions) {
-        Path::new("../algodat-2022s-tutorinnen/ag1")
-    } else {
-        Path::new(".")
-    };
+    let my_config: MyConfig = confy::load_path("./settings.toml")?;
 
+    let algodat_dir = Path::new(&my_config.algodat_dir);
     let algodat_abgaben_dir = algodat_dir.join("abgaben");
+    println!("algodat_dir: {:?}", algodat_dir);
 
-    let students = get_known_students(algodat_dir);
+    let students = get_known_students(&algodat_abgaben_dir);
 
     let args: Vec<String> = std::env::args().collect();
     let mut mat_nr = if args.len() > 1 {
@@ -202,6 +200,19 @@ fn get_framework_dirs(algodat_dir: &Path) -> std::io::Result<Vec<fs::DirEntry>> 
     return Ok(framework_dirs);
 }
 
+#[derive(Serialize, Deserialize)]
+struct MyConfig {
+    algodat_dir: String,
+}
+
+impl Default for MyConfig {
+    fn default() -> Self {
+        Self {
+            algodat_dir: ".".into(),
+        }
+    }
+}
+
 enum OkCancel {
     Ok,
     Cancel,
@@ -255,13 +266,24 @@ fn student_suggester<'a>(
     students: &'a Vec<Student>,
 ) -> Box<dyn for<'r> Fn(&'r str) -> Vec<String> + 'a> {
     Box::new(|user_input| {
+        let lower_user_input = user_input.to_lowercase();
+
         students
             .iter()
             .filter(|student| {
                 student.mat_nr.starts_with(user_input)
-                    || student.first_name.contains(user_input)
-                    || student.last_name.contains(user_input)
-                // TODO: firstname lastname search or fuzzy search
+                    || format!(
+                        "{} {}",
+                        student.first_name.to_lowercase(),
+                        student.last_name.to_lowercase()
+                    )
+                    .contains(&lower_user_input)
+                    || format!(
+                        "{} {}",
+                        student.last_name.to_lowercase(),
+                        student.first_name.to_lowercase()
+                    )
+                    .contains(&lower_user_input)
             })
             .map(|student| {
                 format!(
