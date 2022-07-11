@@ -8,7 +8,7 @@ A program built for a single purpose: Opening Algodat student solutions on Windo
 
 Grab yourself a [copy of Rust](https://www.rust-lang.org/learn/get-started), and then do `cargo build --release`
 
-### Why the everliving hell would you write this in Rust?
+### Why the heckign cat would you write this in Rust?
 
 CMD is cursed, Bash was a bit limited, Powershell is a dark art that I've not yet mastered, Deno didn't have a sexy and working UI crate, Node.js wasn't hip enough, C# development works best with the very chonky version of Visual Studio...
 
