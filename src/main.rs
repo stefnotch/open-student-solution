@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Overengineered Student Solution Opener v1.0");
-    println!("Please place this in the algodat-2022s-tutorinnen/ag1 folder");
+    println!("Please place this in the algodat-2022s-tutorinnen/ag2 folder");
 
     if cfg!(debug_assertions) {
         println!("Warning: Running in dev mode");
