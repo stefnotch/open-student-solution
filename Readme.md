@@ -4,6 +4,10 @@ A program built for a single purpose: Opening Algodat student solutions on Windo
 
 ## FAQ
 
+## Download?
+
+Grab yourself [the latest release and follow the instructions](https://github.com/stefnotch/open-student-solution/releases)
+
 ### How do I build this?
 
 Grab yourself a [copy of Rust](https://www.rust-lang.org/learn/get-started), and then do `cargo build --release`
