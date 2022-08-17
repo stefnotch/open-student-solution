@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let my_config: MyConfig = confy::load_path("./settings.toml")?;
+    // TODO: Warn if intellij path is wrong
 
     let algodat_dir = Path::new(&my_config.algodat_dir);
     let algodat_abgaben_dir = algodat_dir.join("abgaben");
@@ -178,7 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    open::that(&student_output_dir)?;
+    //open::that(&student_output_dir)?;
 
     loop {
         match inquire::Select::new("Open", open_options.clone()).prompt_skippable() {
@@ -199,13 +200,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    // TODO: Show "open PDF" and "open P1/P2/P3" buttons
     // TODO: Protip, use https://plugins.jetbrains.com/plugin/14494-pdf-viewer and then you only have to share your screen
-    // TODO: Open PDF with default program (or browser) and P1/P2/P3 with explorer
     // TODO: https://tuwel.tuwien.ac.at/mod/assign/view.php?action=grading&id=1456555&tifirst=A&tilast=A
-    // TODO: Ask "open with Intellij/default program"
-
-    // TODO: intellij (uh oh) with https://github.com/oliverschwendener/ueli/blob/dev/src/main/executors/application-searcher.ts or https://github.com/microsoft/windows-rs with https://stackoverflow.com/questions/908850/get-installed-applications-in-a-system
+    // TODO: Enter points and public note
+    // TODO: find intellij (uh oh) with https://github.com/oliverschwendener/ueli/blob/dev/src/main/executors/application-searcher.ts or https://github.com/microsoft/windows-rs with https://stackoverflow.com/questions/908850/get-installed-applications-in-a-system
 }
 
 fn find_student_file<P>(path: P, mat_nr: &str) -> std::io::Result<Option<PathBuf>>
