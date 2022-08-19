@@ -1,6 +1,8 @@
 # Algodat Student Solution Opener
 
-A program built for a single purpose: Opening Algodat student solutions on Windows, given a super specific file structure.
+I was an Algorithms and Datastructures tutor in 2022. There, we had submission talks where individial students would be asked questions about their lovely submissions, and get some feedback. 
+
+A program built for a single purpose: Opening Algodat student submissions on Windows, given a super specific file structure. Doing this manually as a tutor, under time-pressure, isn't fun. So automation go brrr.
 
 ## FAQ
 
